@@ -1,6 +1,7 @@
 #include <string>
-#include <stdlib.h>
+#include <cstdlib>
 #include <iostream>
+#include <ncurses.h>
 
 typedef char pixel;
 
@@ -44,10 +45,10 @@ public:
 
     void move(Direction direction) {
         switch(direction) {
-            case Direction::UP : this->x--;
-            case Direction::DOWN : this->x++;
-            case Direction::LEFT : this->y--;
-            case Direction::RIGHT : this->y++;
+            case UP : this->x--;
+            case DOWN : this->x++;
+            case LEFT : this->y--;
+            case RIGHT : this->y++;
         }
     }
 
@@ -148,7 +149,7 @@ class Game  {
     unsigned int score;
     Grid grid;
     Piece current_piece;
-    
+
     void draw() {
         const int height = this->grid.get_height();
         const int width = this->grid.get_width();
@@ -157,20 +158,19 @@ class Game  {
             for (int x=0; x < width; ++x) {
                 if (this->current_piece.is_piece(x,y)) {
                     pixel p = this->current_piece.get_block(x, y);
-                    this->draw_block(p);
+                    this->draw_block(x, y, p);
                 } else {
                     pixel p = this->grid.read(x,y);
-                    this->draw_block(p);
+                    this->draw_block(x, y, p);
                 }
             }
-            putchar('\n');
         }
-        std::cout << "score: " << this->score << std::endl;
+        this->draw_score();
     }
 
-    void draw_block(pixel p) {
+    void draw_block(int x, int y, pixel p) {
         char ch = this->block_to_char(p);
-        putchar(ch);
+        mvaddch(x, y, ch);
     }
 
     char block_to_char(pixel block) {
@@ -180,13 +180,71 @@ class Game  {
         }
     }
 
+    void draw_score() {
+        int x = this->grid.get_width() * 2;
+
+        mvprintw(2, x, "score: %d", this->score);
+    }
+
+    void init() {
+        initscr();
+        clear();
+        cbreak();
+        noecho();
+        curs_set(0);
+    }
+
+    void input() {
+        keypad(stdscr, true);
+        halfdelay(1);
+        const int ESC = 27;
+        int ch = getch();
+        switch(ch) {
+            case KEY_RIGHT:
+                this->move_piece(RIGHT);
+                break;
+            case KEY_LEFT:
+                this->move_piece(LEFT);
+                break;
+            case KEY_DOWN:
+                this->tick();
+                break;
+            case KEY_UP:
+                this->current_piece.rotate();
+                break;
+            case 'q':
+            case ESC:
+                this->game_over = true;
+                break;
+        }
+    }
+
+    void move_piece(Direction direction) {
+        if(this->grid.is_colliding(this->current_piece, direction)) {
+            return;
+        }
+        this->current_piece.move(direction);
+    }
+
     void tick() {
-        if (this->grid.is_colliding(this->current_piece, Direction::DOWN)) {
+        if (this->grid.is_colliding(this->current_piece, DOWN)) {
             // fix piece
             // completed lines
             // generate new random piece
+            this->check_game_over();
         } else {
-            this->current_piece.move(Direction::DOWN);
+            this->current_piece.move(DOWN);
+        }
+    }
+
+    void check_game_over() {
+        int width = this->grid.get_width();
+        for(int x=0; x<width; ++x) {
+            pixel p = this->grid.read(x, 1);
+            if(p == BLOCK) {
+                this->game_over = true;
+                return;
+            }
         }
     }
 
@@ -196,14 +254,14 @@ public:
         this->speed = 1.00;
         this-> score = 0;
         std::cout << this->current_piece.get_grid() << std::endl;
-        // setup ncurses
+        this->init();
         // generate first random piece
     }
 
     void play() {
         while(!this->game_over) {
             this->draw();
-            // input
+            this->input();
             this->tick();
             this->game_over = true;
         }
@@ -211,8 +269,8 @@ public:
     }
     
     void end_game() {
-        //getch
-        //endwin
+        getchar();
+        endwin();
     }
 
 };
