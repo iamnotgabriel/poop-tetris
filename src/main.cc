@@ -87,9 +87,15 @@ public:
         }
     }
 
-    pixel get_pixel(int x, int y)
+    pixel get_pixel_by_coord(int x, int y)
     {
         int i = this->index(x - this->coord.x, y - this->coord.y);
+        return this->piece_grid[i];
+    }
+
+    pixel get_pixel(int x, int y)
+    {
+        int i = this->index(x, y);
         return this->piece_grid[i];
     }
 
@@ -218,19 +224,21 @@ public:
     bool is_colliding(Piece piece, char direction)
     {
         int x, y, index;
-        Point next_delta = this->next_pixel_delta(direction);
+        Point next_delta = this->next_delta(direction);
         pixel next_pixel;
 
         for (int py = 0; py < Piece::SIDE; py++)
         {
             for (int px = 0; px < Piece::SIDE; px++)
             {
+                mvprintw(4, 24, "pixel (%d, %d) ' '", piece.get_x() + px, piece.get_y());
                 if (piece.get_pixel(px, py) == BLOCK)
                 {
                     x = piece.get_x() + px + next_delta.x;
                     y = piece.get_y() + py + next_delta.y;
                     index = this->index(x, y);
                     next_pixel = this->grid[index];
+                    mvprintw(5, 24, "pixel (%d, %d) has next_piece(%d, %d) '%c'", piece.get_x() + px, piece.get_y() + py, x, y, next_pixel);
                     if (next_pixel == WALL || next_pixel == FIXED_BLOCK)
                     {
                         return true;
@@ -241,7 +249,7 @@ public:
         return false;
     }
 
-    Point next_pixel_delta(char direction)
+    Point next_delta(char direction)
     {
         Point next = Point(0, 0);
         switch (direction)
@@ -251,33 +259,15 @@ public:
             break;
         case DOWN:
             next.y = +1;
+            break;
         case RIGHT:
             next.x = +1;
+            break;
         case LEFT:
             next.x = -1;
+            break;
         }
         return next;
-    }
-    pixel get_next_pixel(int x, int y, char direction)
-    {
-        switch (direction)
-        {
-        case UP:
-            y--;
-            break;
-        case DOWN:
-            y++;
-            break;
-        case LEFT:
-            x--;
-            break;
-        case RIGHT:
-            x++;
-            break;
-        }
-
-        int index = this->index(x, y);
-        return this->grid[index];
     }
 };
 
@@ -309,7 +299,7 @@ class Game
             {
                 if (this->current_piece.is_block(x, y))
                 {
-                    pixel p = this->current_piece.get_pixel(x, y);
+                    pixel p = this->current_piece.get_pixel_by_coord(x, y);
                     this->draw_block(x, y, p);
                 }
                 else
@@ -427,6 +417,7 @@ class Game
 
     void end_game()
     {
+        mvprintw(this->grid.get_height() / 2, this->grid.get_width() / 2, "GAME OVER");
         getchar();
         endwin();
     }
