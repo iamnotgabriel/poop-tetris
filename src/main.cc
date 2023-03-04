@@ -7,7 +7,7 @@
 typedef char pixel;
 const static std::string GAME = "POOP TETRIS";
 const pixel BLANK = '.';
-const pixel BLOCK = 'T';
+const pixel BLOCK = 'Z';
 const pixel FIXED_BLOCK = 'B';
 const pixel WALL = '#';
 
@@ -62,9 +62,9 @@ public:
         return Piece(3, 1, pieces[distr(gen)]);
     }
 
-    void rotate()
+    void rotate(int direction)
     {
-        this->rotation_angle++;
+        this->rotation_angle += direction;
         this->rotation_angle %= 4;
     }
 
@@ -134,13 +134,13 @@ public:
     }
 };
 
-std::string Piece::SQ = "_____TT__TT_____";
-std::string Piece::I = "__T___T___T___T_";
-std::string Piece::L = "__T___T__TT_____";
-std::string Piece::BL = "__T___T___TT____";
-std::string Piece::S = "_T___TT___T_____";
-std::string Piece::BS = "__T__TT__T______";
-std::string Piece::T = "__T__TT___T_____";
+std::string Piece::SQ = "_____ZZ__ZZ_____";
+std::string Piece::I = "__Z___Z___Z___Z_";
+std::string Piece::L = "__Z___Z__ZZ_____";
+std::string Piece::BL = "__Z___Z___ZZ____";
+std::string Piece::S = "_Z___ZZ___Z_____";
+std::string Piece::BS = "__Z__ZZ__Z______";
+std::string Piece::T = "__Z__ZZ___Z_____";
 int Piece::SIDE = 4;
 
 class Grid
@@ -179,6 +179,12 @@ class Grid
         }
     }
 
+    void write(int x, int y, pixel p)
+    {
+        const int index = this->index(x, y);
+        this->grid[index] = p;
+    }
+
 public:
     Grid(int width, int height)
     {
@@ -209,10 +215,59 @@ public:
                 {
                     x = piece.get_x() + px;
                     y = piece.get_y() + py;
-                    index = this->index(x, y);
-                    this->grid[index] = FIXED_BLOCK;
+                    this->write(x, y, FIXED_BLOCK);
                 }
             }
+        }
+    }
+
+    int empty_lines(Piece piece)
+    {
+        int cleared_lines = 0;
+        int py = piece.get_y();
+        int width = this->width;
+        int last_line = this->height - 1;
+
+        for (int y = py + 3; y >= py; y--)
+        {
+            if (y < last_line && y > 0 && this->is_line_full(y))
+            {
+                this->clear_line(y);
+                cleared_lines++;
+            }
+        }
+
+        return cleared_lines;
+    }
+
+    bool is_line_full(int line)
+    {
+        const int columns = this->width - 1;
+        for (int x = 1; x < columns; x++)
+        {
+            if (this->read(x, line) == BLANK)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void clear_line(int line)
+    {
+        const int columns = this->width;
+        for (int y = line; y > 1; y--)
+        {
+            for (int x = 0; x < columns; x++)
+            {
+                const pixel above = this->read(x, y - 1);
+                this->write(x, y, above);
+            }
+        }
+
+        for (int x = 2; x < columns; x++)
+        {
+            this->write(x - 1, 1, BLANK);
         }
     }
 
@@ -231,14 +286,12 @@ public:
         {
             for (int px = 0; px < Piece::SIDE; px++)
             {
-                mvprintw(4, 24, "pixel (%d, %d) ' '", piece.get_x() + px, piece.get_y());
                 if (piece.get_pixel(px, py) == BLOCK)
                 {
                     x = piece.get_x() + px + next_delta.x;
                     y = piece.get_y() + py + next_delta.y;
                     index = this->index(x, y);
                     next_pixel = this->grid[index];
-                    mvprintw(5, 24, "pixel (%d, %d) has next_piece(%d, %d) '%c'", piece.get_x() + px, piece.get_y() + py, x, y, next_pixel);
                     if (next_pixel == WALL || next_pixel == FIXED_BLOCK)
                     {
                         return true;
@@ -268,6 +321,26 @@ public:
             break;
         }
         return next;
+    }
+
+    bool is_piece_overlapping(Piece piece)
+    {
+        int x, y;
+        for (int py = 0; py < Piece::SIDE; ++py)
+        {
+            for (int px = 0; px < Piece::SIDE; ++px)
+            {
+                x = px + piece.get_x();
+                y = py + piece.get_y();
+                pixel piece_pixel = piece.get_pixel(px, py);
+                pixel grid_pixel = this->read(x, y);
+                if (piece_pixel == BLOCK && grid_pixel != BLANK)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 };
 
@@ -322,10 +395,15 @@ class Game
     {
         switch (block)
         {
-        case '.':
-            return ' ';
+        case FIXED_BLOCK:
+            return 'Z';
+        case BLOCK:
+            return 'B';
+        case WALL:
+            return '#';
         default:
-            return block;
+        case BLANK:
+            return '.';
         }
     }
 
@@ -351,11 +429,18 @@ class Game
             break;
         case KEY_UP:
         case UP:
-            this->current_piece.rotate();
+            this->rotate_piece(1);
+            break;
+        case 'z':
+            this->rotate_piece(3);
             break;
         case LEFT:
+        case KEY_LEFT:
+            this->move_piece(LEFT);
+            break;
+        case KEY_RIGHT:
         case RIGHT:
-            this->move_piece(ch);
+            this->move_piece(RIGHT);
             break;
         case 'q':
         case ESC:
@@ -372,18 +457,12 @@ class Game
         }
     }
 
-    void push_down()
+    void rotate_piece(int direction)
     {
-        if (this->grid.is_colliding(this->current_piece, DOWN))
+        this->current_piece.rotate(direction);
+        while (this->grid.is_piece_overlapping(this->current_piece))
         {
-            this->grid.fix_piece(this->current_piece);
-            // completed lines
-            this->current_piece = Piece::random();
-            this->check_game_over();
-        }
-        else
-        {
-            this->current_piece.move(DOWN);
+            this->current_piece.rotate(direction);
         }
     }
 
@@ -401,32 +480,47 @@ class Game
         }
     }
 
+    void push_down()
+    {
+        if (this->grid.is_colliding(this->current_piece, DOWN))
+        {
+            this->grid.fix_piece(this->current_piece);
+            int cleared_lines = this->grid.empty_lines(this->current_piece);
+            this->current_piece = Piece::random();
+            this->check_game_over();
+            this->update_score(cleared_lines);
+        }
+        else
+        {
+            this->current_piece.move(DOWN);
+        }
+    }
+
+    void update_score(int cleared_lines)
+    {
+        this->score += cleared_lines * 100;
+        if (speed > 10)
+        {
+            this->speed--;
+        }
+    }
+
     void check_game_over()
     {
-        int width = this->grid.get_width();
-        for (int x = 0; x < width; ++x)
-        {
-            pixel p = this->grid.read(x, 1);
-            if (p == BLOCK)
-            {
-                this->game_over = true;
-                return;
-            }
-        }
+        this->game_over = this->grid.is_piece_overlapping(this->current_piece);
     }
 
     void end_game()
     {
-        mvprintw(this->grid.get_height() / 2, this->grid.get_width() / 2, "GAME OVER");
         getchar();
         endwin();
     }
 
 public:
-    Game() : grid(20, 14), current_piece(Piece::random())
+    Game() : grid(12, 22), current_piece(Piece::random())
     {
         this->game_over = false;
-        this->speed = 50;
+        this->speed = 40;
         this->score = 0;
         this->init();
     }
@@ -436,7 +530,7 @@ public:
         int speed_counter = 0;
         while (!this->game_over)
         {
-            usleep(1000 * 20);
+            usleep(1000 * 25);
             this->draw();
             this->input();
             this->tick();
